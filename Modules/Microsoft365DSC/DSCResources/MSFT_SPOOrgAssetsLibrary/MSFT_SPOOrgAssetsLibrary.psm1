@@ -289,6 +289,72 @@ function Set-TargetResource
     }
     elseif ($Ensure -eq 'Present' -and $currentOrgSiteAsset.Ensure -eq 'Absent')
     {
+        $ErrorActionPreference = 'Continue'
+
+        $siteUrl = "https://$($domain)-admin.sharepoint.com"
+
+        write-Verbose ("Connect to site: $siteUrl")
+
+        Connect-PnPOnline -Thumbprint $CertificateThumbprint -Tenant $TenantId -ClientId $ApplicationId -Url $siteUrl
+
+        write-Verbose ("Retrieve sites")
+
+        $sites = Get-PnPTenantSite | select Url -ExpandProperty Url
+
+        $currentOrgAssetLibraryPath = $null
+        $OrgAssetLibraryPath = $null
+
+        $testSitePath = "sites/$sitePath"
+
+        $ErrorActionPreference = 'SilentlyContinue'
+
+        $libraryPath = "sites/$sitePath/$title"
+
+        $libraryUrl = "https://$domain.sharepoint.com/sites/$sitePath/$title"
+
+        foreach ($site in $sites) {
+
+            write-Verbose ("Connect to site: $site and retrieve OrgAssetLibrary")
+
+            Connect-PnPOnline -Thumbprint $CertificateThumbprint -Tenant $TenantId -ClientId $ApplicationId -Url $site
+
+            $OrgAssetLibrariesPath=(Get-PnPOrgAssetsLibrary).OrgAssetsLibraries.LibraryUrl.DecodedUrl
+            foreach( $OrgAssetLibraryPath in $OrgAssetLibrariesPath  ){
+                    if ( $OrgAssetLibraryPath -eq $libraryPath)
+                        {
+                            $currentOrgAssetLibraryPath = $OrgAssetLibraryPath
+                            write-host ("")
+                        }
+            }
+        }
+        $ErrorActionPreference = 'Continue'
+        If ($currentOrgAssetLibraryPath -eq $null -or $currentOrgAssetLibraryPath -eq "" -or $currentOrgAssetLibraryPath -ne $libraryPath   ) {
+
+            Write-Host ("No active OrgAssetLibrary found for $libraryUrl")
+            Write-Host ("Found OrgAssetLibraries : $OrgAssetLibrariesPath")
+            write-host("$testSitePath")
+
+            if ( ($OrgAssetLibrariesPath -match $testSitePath ) -ne $null -or $OrgAssetLibrariesPath -eq $null -or $OrgAssetLibrariesPath -eq "" ) {
+
+                Write-Verbose ("Adding Everyone except external user group to $sitePath Visitor")
+                spoAddEveryoneExceptExternalToSiteVisitors -domain $domain -sitePaths @($sitePath) -ApplicationId $ApplicationId -TenantId $TenantId -CertificateThumbprint $CertificateThumbprint
+
+                Write-Verbose ("Creating document library $title at $sitePath")
+                spoCreateDocumentLibrary -domain $domain -title $title -sitePath $sitePath -ApplicationId $ApplicationId -TenantId $TenantId -CertificateThumbprint $CertificateThumbprint
+
+                Write-Host ("You can now deploy the orgAssetLibrary LZ with libraryUrl: $libraryUrl")
+            
+            }
+            else{
+                write-host("")
+                Write-host ("Document library not in the same site as Org Asset Library")
+                Write-Host("You can specify up to 30 organization asset libraries for a single organization. All of these libraries (regardless of type) must be on the same site.")
+           }
+    
+        }
+        else {
+            Write-Host ("OrgAssetLibrary already exists at https://$domain.sharepoint.com/$currentOrgAssetLibraryPath")
+        }
         Add-PnPOrgAssetsLibrary @currentParameters
     }
     elseif ($Ensure -eq 'Absent' -and $currentOrgSiteAsset.Ensure -eq 'Present')
